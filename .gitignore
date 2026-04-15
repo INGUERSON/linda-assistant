@@ -1,5 +1,7 @@
-.env
 .venv/
 __pycache__/
 *.pyc
-seen_jobs.json
+*.pyo
+.env
+linda_data.json
+*.log

@@ -1,67 +1,81 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from database import get_summary
 
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-LINDA_PERSONA = """Você é a Linda, a Assistente Executiva de um Desenvolvedor Freelancer altamente qualificado.
-Seu objetivo é negociar projetos autônomos para o seu chefe. Suas características:
-- Extremamente profissional, polida, e elegante em sua comunicação.
-- Você chama o seu chefe de "meu chefe" ou pelo nome dele (quando configurado).
-- Seu tom é confiante, como uma secretária de um CEO de sucesso.
-- Você entende de tecnologia (desenvolvimento web, automação, python, web apps).
-- Você SEMPRE busca fechar o cliente e conseguir o escopo claro do projeto.
-- Você tem autonomia para pedir orçamento detalhado e prazos.
-- Responda de maneira concisa e direta, voltada para conversas rápidas em aplicativos de mensagens."""
+LINDA_PERSONA = """Você é a Linda, a secretária pessoal executiva do seu chefe Igor.
+Você é extremamente organizada, elegante e proativa.
 
-def get_linda_response(user_message: str) -> str:
-    """Gets a response from OpenAI acting as Linda"""
+Suas responsabilidades agora são:
+- Gerenciar as tarefas diárias do Igor
+- Acompanhar os projetos pessoais e profissionais dele
+- Organizar a agenda e cronogramas
+- Lembrar de prazos importantes
+- Dar sugestões de produtividade quando pertinente
+
+Seu tom:
+- Chama o chefe de "chefe" ou "Igor"
+- É direta, concisa e eficiente (estilo mensagem de celular)
+- Usa emojis com moderação para deixar as mensagens mais visuais
+- Quando não sabe algo, pergunta ao invés de inventar
+- É motivadora — celebra conquistas e encoraja quando necessário
+
+Você tem acesso ao sistema de gerenciamento do chefe com tarefas, projetos e agenda.
+Responda sempre em português do Brasil."""
+
+
+def get_linda_response(user_message: str, context_data: dict = None) -> str:
+    """Obtém a resposta da Linda com contexto da situação atual."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key or api_key == "your_openai_api_key_here":
-        return "⚠️ Erro: Minha conexão com o cérebro (Chave de API OpenAI) não está configurada no arquivo .env."
+        return "⚠️ Chefe, minha chave de IA não está configurada no .env."
+
+    # Injeta contexto atual no sistema
+    system_prompt = LINDA_PERSONA
+    if context_data:
+        system_prompt += f"""
+
+--- CONTEXTO ATUAL ---
+Tarefas pendentes hoje: {context_data.get('pending_tasks', 0)}
+Tarefas concluídas hoje: {context_data.get('done_tasks', 0)}
+Projetos ativos: {context_data.get('active_projects', 0)}
+Compromissos hoje: {context_data.get('agenda_count', 0)}
+---"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": LINDA_PERSONA},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
-            ]
+            ],
+            max_tokens=500
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Desculpe chefe, tive uma falha de sistema: {str(e)}"
+        return f"Desculpe chefe, tive uma falha: {str(e)}"
 
-def draft_proposal(job_title: str, job_description: str) -> str:
-    """Gets Linda to draft a professional proposal for a job match"""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "your_openai_api_key_here":
-        return "⚠️ Não consegui gerar a proposta pois a chave OpenAI está faltando."
 
-    prompt = f"""
-    Chefe encontrou uma vaga excelente. Escreva uma proposta (Cover Letter) para enviar ao cliente.
-    
-    Título da Vaga: {job_title}
-    Descrição: {job_description}
-    
-    Regras para a Proposta:
-    - O idioma da proposta deve ser o mesmo idioma da Descrição da Vaga.
-    - O tom deve ser profissional, direto e amigável (sem enrolação corporativa exagerada).
-    - Diga que você tem experiência sólida com Python, Automação e Web Apps.
-    - Termine com uma Call to Action (CTA) convidando para uma call rápida.
-    - O remetente da carta deve ser o 'Desenvolvedor' e não a 'Linda'.
-    """
-    
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Você é um especialista em aquisição de clientes freelancer escrevendo propostas de altíssima conversão no Upwork/Fiverr."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Erro ao gerar proposta: {str(e)}"
+def get_smart_summary() -> str:
+    """Linda gera um resumo inteligente do dia."""
+    summary = get_summary()
+
+    prompt = f"""O chefe pediu um resumo do dia. Aqui estão os dados:
+
+Tarefas pendentes: {summary['pending_tasks']}
+Lista: {[t['title'] for t in summary['tasks'][:5]]}
+
+Projetos ativos: {summary['active_projects']}
+Lista: {[p['name'] for p in summary['projects'][:3]]}
+
+Agenda de hoje: {summary['agenda_count']} compromisso(s)
+Lista: {[(e['time'], e['event']) for e in summary['agenda']]}
+
+Gere um briefing matinal executivo conciso, como uma secretária que está preparando o chefe para o dia.
+Inclua o que é mais urgente, o que tem na agenda e motive brevemente."""
+
+    return get_linda_response(prompt)
